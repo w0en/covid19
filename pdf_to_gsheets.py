@@ -1,12 +1,14 @@
 import gspread
 from google.oauth2 import service_account
 import PyPDF2
-from datetime import datetime
+from datetime import datetime, timedelta
 from pprint import pprint as pp
 import words2num
+import re
 
 
-DATE_STRING = datetime.today().strftime('%d %b %Y')
+ROMAN_REGEX = "^[mdclxvi]+. $"
+DATE_STRING = (datetime.today()-timedelta(days=1)).strftime('%d %b %Y')
 PDF_PATH = 'downloaded_pdfs/%s.pdf' % DATE_STRING
 DELIMITER = '\n'
 cases_today = {}
@@ -21,17 +23,29 @@ url = "https://docs.google.com/spreadsheets/d/1UFWHuTJiDdJhtgygfqX9GRIGLqFIjQuI8
 """
 
 
-def clean_list(page):
-    paragraphs = list(filter(lambda x: not (x.isspace()), page.extractText().split(DELIMITER)))
-    pp(paragraphs)
-    concatenated = []
-    for e in paragraphs:
-        if not e.endswith("now."):
-            concatenated[-1] += " " + e
-        else:
-            concatenated.append(e)
+def is_roman(string):
+    if string.endswith('.'):
+        if string.strip("i").strip("v").strip("x").strip("m").strip("c").isblank():
+            return True
+    else:
+        return False
 
-    print("NEW: " + str(concatenated))
+
+def clean_list(page):
+    raw_text = page.extractText().split('\n')
+    cleaned_text = filter(lambda x: not x.isspace(), map(lambda x: x.strip() + ' ', raw_text))
+    banana = list(cleaned_text)
+    pp(list(cleaned_text))
+    paragraphs = [""]
+    for e in banana:
+        if re.match(pattern=ROMAN_REGEX, string=e):
+            paragraphs.append(e)
+            print("REGEX MATCHED")
+            print(e)
+        else:
+            print("REGEX NOT MATCHED")
+            paragraphs[-1] += e
+    pp(paragraphs)
     return None
 
 

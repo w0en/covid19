@@ -1,8 +1,8 @@
 import requests
 import bs4
-from datetime import datetime
+from datetime import datetime, timedelta
 
-DATE_STRING = datetime.today().strftime('%d %b %Y')
+DATE_STRING = (datetime.today()-timedelta(days=1)).strftime('%d %b %Y')
 DISCHARGED_STRING = 'more-cases-discharged'
 NEW_CASES_STRING = 'new-cases-of-covid-19-infection-confirmed'
 COVID_WEBSITE = 'https://www.moh.gov.sg/covid-19/past-updates'
