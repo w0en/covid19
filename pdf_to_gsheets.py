@@ -2,15 +2,15 @@ import gspread
 from google.oauth2 import service_account
 import PyPDF2
 from datetime import datetime, timedelta
-from pprint import pprint as pp
 import words2num
 import re
+from pprint import pprint as pp
 
 ROMAN_REGEX = "^[mdclxvi]+. $"
 DATE_STRING = (datetime.today() - timedelta(days=1)).strftime('%d %b %Y')
 PDF_PATH = 'downloaded_pdfs/%s.pdf' % DATE_STRING
 CLUSTERS_NEW_CASES = {}
-CLUSTERS_CONFIRMED_CASES = {}
+CLUSTERS_TOTAL_CASES = {}
 
 """
 # setup
@@ -22,7 +22,7 @@ url = "https://docs.google.com/spreadsheets/d/1UFWHuTJiDdJhtgygfqX9GRIGLqFIjQuI8
 """
 
 
-def clean_list(page):
+def parse_clusters_from_page(page):
     contents = get_contents(page)
     raw_clusters = parse_contents(contents)
     cleaned_clusters = list(map(lambda x: clean_cluster(x), raw_clusters))
@@ -65,38 +65,70 @@ def try_convert(num):
     try:
         num = str(words2num.w2n(num)) + ' '
         return num
-    except ValueError:
+    except (ValueError, words2num.core.NumberParseException):
         return num + ' '
 
 
 def clean_cluster(cluster):
-    return clean_cluster_address(convert_cluster_numbers(cluster))
+    if "new cluster" in cluster:
+        return clean_new_cluster(cluster)
+    else:
+        return clean_cluster_address(convert_cluster_numbers(cluster))
 
 
 def clean_cluster_address(cluster):
-    split_one = cluster.split(',')
-    split_two = split_one[0].split('at')
+    split_one = cluster.split(',', maxsplit=1)  # no maxsplit catches some of the dorms with > 1k confirmed cases
+    split_two = split_one[0].split('at', maxsplit=1)  # no maxsplit catches some parts of the addresses
     address = split_two[1]
-    split_address = address.split()
-    concatenated_address = []
-    for i in range(len(split_address) - 1):
-        if (split_address[i][-1].isdigit() and split_address[i + 1][0].isdigit()) \
-                or ((split_address[i][0].isupper() and split_address[i + 1][0].islower()) and split_address[i + 1] != 'dormitory'):
-            concatenated_address.append(str(split_address[i]) + str(split_address[i + 1]) + ' ')
-        else:
-            concatenated_address.append(split_address[i] + ' ')
-    cleaned_address = [concatenated_address[0]]
-    for i in range(1, len(concatenated_address)):
-        if not (concatenated_address[i] in concatenated_address[i - 1]):
-            cleaned_address.append(concatenated_address[i])
-        else:
-            continue
-    final_address = "".join(cleaned_address)
-    # if "(" in final_address and ")" not in final_address:
-    #     final_address += ")"
-    join_two = split_two[0] + "at " + final_address
+    cleaned_address = concatenate_address(address.split())
+    if "(" in cleaned_address and ")" not in cleaned_address:
+        cleaned_address += ")"
+    join_two = split_two[0] + "at " + cleaned_address
     join_one = join_two.strip() + "," + split_one[-1]
     return join_one
+
+
+def concatenate_address(address_list):
+    concatenated_list = []
+    for i in address_list:
+        if i[0].isdigit():
+            if address_list.index(i) == 0:
+                concatenated_list.append(i + ' ')
+            else:
+                concatenated_list[-1] += i + ' '
+        elif i[0].islower():
+            if address_list.index(i) == 0:
+                concatenated_list.append(i + ' ')
+            else:
+                concatenated_list[-1] += i + ' '
+        else:
+            concatenated_list.append(i + ' ')
+    return "".join(concatenated_list)
+
+
+def simple_space_remover(cluster):
+    split_cluster = cluster.split(maxsplit=2)
+    first = split_cluster[0] + split_cluster[1] + ' '
+    if not split_cluster[0][0].isdigit():
+        first = try_convert(first) + ' '
+    return first + ' ' + split_cluster[2]
+
+
+def clean_new_cluster(cluster):
+    numbers_converted = list(map(lambda x: try_convert(x), cluster.split()))
+    return "".join(numbers_converted)
+
+
+def get_address(cluster):
+    return cluster.split(',')[0].split("at")[1]
+
+
+def get_new_cases(cluster):
+    return int(cluster.split()[0])
+
+
+def get_total_cases(cluster):
+    return int(cluster.split()[-4])
 
 
 pdf = open(PDF_PATH, 'rb')
@@ -107,13 +139,17 @@ print("BEGIN PARSING")
 print("=====================================================")
 print("=====================================================")
 
-for i in range(pdf_reader.numPages):
+for i in range(1, 2):
     print("=====================================================")
     print("PAGE " + str(i + 1) + " OF " + str(pdf_reader.numPages))
     print("=====================================================")
-    clusters = clean_list(pdf_reader.getPage(i))
+    clusters = parse_clusters_from_page(pdf_reader.getPage(i))
     for cluster in clusters:
         print(cluster)
+        CLUSTERS_NEW_CASES[get_address(cluster)] = get_new_cases(cluster)
+        CLUSTERS_TOTAL_CASES[get_address(cluster)] = get_total_cases(cluster)
+    pp(CLUSTERS_NEW_CASES)
+    pp(CLUSTERS_TOTAL_CASES)
 
 print("=====================================================")
 print("=====================================================")
@@ -122,9 +158,4 @@ print("=====================================================")
 print("=====================================================")
 
 
-# TODO: Special function for new clusters
-# TODO: Parentheses for address
-# TODO: missing words in address (e.g. 'road')
-# TODO: resolve what happens when a space in the first word happens e.g. o ne
-# TODO: fix parsing of first page
 # TODO: fix parsing of random spaces within cluster text
