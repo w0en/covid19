@@ -1,27 +1,13 @@
-import gspread
-from google.oauth2 import service_account
 import PyPDF2
-from datetime import datetime, timedelta
-import words2num
 import re
+import words2num
+from datetime import datetime, timedelta
 from pprint import pprint as pp
 
 ROMAN_REGEX = "^[mdclxvi]+. $"
 DATE_STRING = (datetime.today() - timedelta(days=1)).strftime('%d %b %Y')
 PDF_PATH = 'downloaded_pdfs/%s.pdf' % DATE_STRING
 CLUSTERS_CASES = {}  # address:(new, total)
-VALID_WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "confirmed", "cases",
-               "additional", "the", "cluster", "now", "linked"]
-
-
-"""
-# setup
-credentials = service_account.Credentials.from_service_account_file("credentials.json")
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
-scoped_credentials = credentials.with_scopes(scope)
-client = gspread.authorize(scoped_credentials)
-url = "https://docs.google.com/spreadsheets/d/1UFWHuTJiDdJhtgygfqX9GRIGLqFIjQuI88cN-S8PhL0"
-"""
 
 
 def parse_clusters_from_page(page):
@@ -48,6 +34,26 @@ def parse_clusters_from_contents(cleaned_text):
     return clusters
 
 
+def clean_cluster(cluster):
+    if "new cluster" in cluster:
+        return clean_new_cluster(cluster)
+    else:
+        return clean_cluster_address(convert_cluster_numbers(cluster))
+
+
+def clean_new_cluster(cluster):
+    numbers_converted = list(map(lambda x: try_convert(x), cluster.split()))
+    return "".join(numbers_converted)
+
+
+def try_convert(num):
+    try:
+        num = str(words2num.w2n(num)) + ' '
+        return num
+    except (ValueError, words2num.core.NumberParseException):
+        return num + ' '
+
+
 def convert_cluster_numbers(cluster):
     # clusters are strings
     cluster = convert_first_number(cluster)
@@ -61,21 +67,6 @@ def convert_first_number(string):
     split = string.split(maxsplit=1)
     split[0] = try_convert(split[0])
     return "".join(split)
-
-
-def try_convert(num):
-    try:
-        num = str(words2num.w2n(num)) + ' '
-        return num
-    except (ValueError, words2num.core.NumberParseException):
-        return num + ' '
-
-
-def clean_cluster(cluster):
-    if "new cluster" in cluster:
-        return clean_new_cluster(cluster)
-    else:
-        return clean_cluster_address(convert_cluster_numbers(cluster))
 
 
 def clean_cluster_address(cluster):
@@ -106,11 +97,6 @@ def concatenate_address(address_list):
         else:
             concatenated_list.append(i)
     return " ".join(concatenated_list)
-
-
-def clean_new_cluster(cluster):
-    numbers_converted = list(map(lambda x: try_convert(x), cluster.split()))
-    return "".join(numbers_converted)
 
 
 def get_address(cluster):
@@ -172,8 +158,6 @@ pdf_reader = PyPDF2.PdfFileReader(pdf)
 print("=====================================================")
 print("=====================================================")
 print("BEGIN PARSING")
-print("=====================================================")
-print("=====================================================")
 
 for i in range(pdf_reader.numPages):
     print("=====================================================")
@@ -184,8 +168,6 @@ for i in range(pdf_reader.numPages):
         print(cluster)
         CLUSTERS_CASES[get_address(cluster)] = (get_new_cases(cluster), get_total_cases(cluster))
 
-print("=====================================================")
-print("=====================================================")
 print("FINISHED PRINTING")
 print("=====================================================")
 print("=====================================================")
