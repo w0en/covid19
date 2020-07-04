@@ -5,16 +5,66 @@ from datetime import datetime, timedelta
 from pprint import pprint as pp
 
 ROMAN_REGEX = "^[mdclxvi]+. $"
-DATE_STRING = (datetime.today() - timedelta(days=2)).strftime('%d %b %Y')
+DELIMITER_REGEX = " at |,"
+DATE_STRING = (datetime.today() - timedelta(days=1)).strftime('%d %b %Y')
 PDF_PATH = 'downloaded_pdfs/%s.pdf' % DATE_STRING
 CLUSTERS_CASES = {}  # address:(new, total)
+
+
+class Cluster:
+    # TODO: Split cluster name and address
+    total_cases = 0
+
+    def __init__(self, address, new_cases):
+        self.address = address  # static
+        self.new_cases = new_cases  # list of (cases, date) tuples?
+
+    # output formats
+    def __repr__(self):
+        return_string = "Cluster at: {} \n Recent cases: {} on {} \n Total cases: {}".format(self.address,
+                                                                                             self.new_cases[-1][1],
+                                                                                             self.new_cases[-1][0],
+                                                                                             self.total_cases)
+        return return_string
+
+    def __str__(self):
+        return_string = "{}: {}. Latest update: {} on {}".format(self.address, self.total_cases,
+                                                                 self.new_cases[-1][0], self.new_cases[-1][1])
+        return return_string
+
+    # getters
+    def get_address(self):
+        return self.address
+
+    def get_new_cases(self, date):
+        for i in self.new_cases:
+            if i[1] == date:
+                return i[0]
+        return -1
+
+    def get_total_cases(self):
+        return sum(map(lambda x: x[0], self.new_cases))
+
+    # setters
+    def add_new_case(self, cases, date):
+        for i in self.new_cases:
+            if i[1] == date:
+                break
+            else:
+                self.new_cases.append((cases, date))
+
+    def set_total_cases(self, total_cases):
+        if self.total_cases != total_cases:
+            print("Total cases mismatch!")
+            self.total_cases = total_cases
+            print("Updated total cases to reflect numbers in Annex B")
 
 
 def parse_clusters_from_page(page):
     contents = get_contents(page)
     raw_clusters = parse_clusters_from_contents(contents)
-    cleaned_clusters = list(map(lambda x: clean_cluster(x), raw_clusters))
-    return cleaned_clusters
+    cleaned_raw_clusters = list(map(clean_cluster, raw_clusters))
+    return cleaned_raw_clusters
 
 
 def get_contents(page):
@@ -35,52 +85,27 @@ def parse_clusters_from_contents(cleaned_text):
 
 
 def clean_cluster(cluster):
-    if "new cluster" in cluster:
-        return clean_new_cluster(cluster)
+    gaps_fixed = keyword_check(cluster)
+    if "new cluster" in gaps_fixed:
+        return "".join(convert_cluster_numbers(gaps_fixed))
     else:
-        return clean_cluster_address(convert_cluster_numbers(cluster))
-
-
-def clean_new_cluster(cluster):
-    split = cluster.split()
-    numbers_converted = list(map(lambda x: try_convert(x), split))
-    return "".join(numbers_converted)
-
-
-def format_at(cluster):
-    split = cluster.split()
-    for i in range(len(split) - 1):
-        if split[i] == 'a' and split[i + 1] == 't':
-            split[i] += split.pop(i + 1)
-    return " ".join(split)
+        return clean_cluster_address(convert_cluster_numbers(gaps_fixed))
 
 
 def try_convert(num):
     try:
-        num = str(words2num.w2n(num)) + ' '
+        num = str(words2num.w2n(num))
         return num
     except (ValueError, words2num.core.NumberParseException):
-        return num + ' '
+        return num
 
 
 def convert_cluster_numbers(cluster):
-    # clusters are strings
-    cluster = convert_first_number(cluster)
-    second_split = cluster.split("of")
-    second_split[1] = convert_first_number(second_split[1])
-    cleaned_cluster = "of ".join(second_split)
-    return cleaned_cluster
-
-
-def convert_first_number(string):
-    split = string.split(maxsplit=1)
-    split[0] = try_convert(split[0])
-    return "".join(split)
+    return " ".join(map(try_convert, cluster.split()))
 
 
 def clean_cluster_address(cluster):
-    split = format_at(cluster)
-    split_one = split.split(',', maxsplit=1)  # no maxsplit catches some of the dorms with > 1k confirmed cases
+    split_one = cluster.split(',', maxsplit=1)  # no maxsplit catches the dorms with > 1k confirmed cases
     split_two = split_one[0].split('at', maxsplit=1)  # no maxsplit catches some parts of the addresses
     address = split_two[1]
     cleaned_address = format_address(concatenate_address(address.split()))
@@ -166,6 +191,70 @@ def get_total_cases(cluster):
             return int(split_cluster.pop(i + 2).replace(',', ''))
         if split_cluster[i] == "confirmed":
             return int(split_cluster.pop(i - 1).replace(',', ''))
+
+
+def keyword_check(cluster):
+    split = cluster.split()
+    for i in range(len(split) - 1):
+        if split[i] == 'o' and split[i + 1] == 'ne':  # numbers
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'on' and split[i + 1] == 'e':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 't' and split[i + 1] == 'wo':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'tw' and split[i + 1] == 'o':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 't' and split[i + 1] == 'hree':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'th' and split[i + 1] == 'ree':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'thr' and split[i + 1] == 'ee':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'thre' and split[i + 1] == 'e':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'f' and split[i + 1] == 'our':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'fo' and split[i + 1] == 'ur':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'fou' and split[i + 1] == 'r':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'f' and split[i + 1] == 'ive':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'fi' and split[i + 1] == 've':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'fiv' and split[i + 1] == 'e':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 's' and split[i + 1] == 'ix':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'si' and split[i + 1] == 'x':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 's' and split[i + 1] == 'even':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'se' and split[i + 1] == 'ven':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'sev' and split[i + 1] == 'en':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'seve' and split[i + 1] == 'n':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'e' and split[i + 1] == 'eight':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'ei' and split[i + 1] == 'ght':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'eig' and split[i + 1] == 'ht':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'eigh' and split[i + 1] == 't':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'n' and split[i + 1] == 'ine':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'ni' and split[i + 1] == 'ne':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'nin' and split[i + 1] == 'e':
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'a' and split[i + 1] == 't':  # at
+            split[i] += split.pop(i + 1)
+        elif split[i] == 'o' and split[i + 1] == 'f':  # of
+            split[i] += split.pop(i + 1)
+    return " ".join(split)
 
 
 pdf = open(PDF_PATH, 'rb')
