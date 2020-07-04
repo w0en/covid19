@@ -9,6 +9,7 @@ DELIMITER_REGEX = " at |,"
 DATE_STRING = (datetime.today() - timedelta(days=1)).strftime('%d %b %Y')
 PDF_PATH = 'downloaded_pdfs/%s.pdf' % DATE_STRING
 CLUSTERS_CASES = {}  # address:(new, total)
+CLUSTER_LIST = []
 
 
 class Cluster:
@@ -20,6 +21,7 @@ class Cluster:
         self.new_cases = new_cases  # list of (cases, date) tuples?
 
     # output formats
+    """
     def __repr__(self):
         return_string = "Cluster at: {} \n Recent cases: {} on {} \n Total cases: {}".format(self.address,
                                                                                              self.new_cases[-1][1],
@@ -31,7 +33,7 @@ class Cluster:
         return_string = "{}: {}. Latest update: {} on {}".format(self.address, self.total_cases,
                                                                  self.new_cases[-1][0], self.new_cases[-1][1])
         return return_string
-
+    """
     # getters
     def get_address(self):
         return self.address
@@ -85,11 +87,11 @@ def parse_clusters_from_contents(cleaned_text):
 
 
 def clean_cluster(cluster):
-    gaps_fixed = keyword_check(cluster)
-    if "new cluster" in gaps_fixed:
-        return "".join(convert_cluster_numbers(gaps_fixed))
+    gaps_fixed_numbers_converted = convert_cluster_numbers(keyword_check(cluster))
+    if "new cluster" in gaps_fixed_numbers_converted:
+        return gaps_fixed_numbers_converted
     else:
-        return clean_cluster_address(convert_cluster_numbers(gaps_fixed))
+        return clean_cluster_address(gaps_fixed_numbers_converted)
 
 
 def try_convert(num):
@@ -254,6 +256,9 @@ def keyword_check(cluster):
             split[i] += split.pop(i + 1)
         elif split[i] == 'o' and split[i + 1] == 'f':  # of
             split[i] += split.pop(i + 1)
+        elif split[i] == 'now' and split[i + 1] == '.':  # end of sentence space remover
+            split[i] += split.pop(i + 1)
+
     return " ".join(split)
 
 
@@ -271,6 +276,7 @@ for i in range(pdf_reader.numPages):
     for cluster in clusters:
         print(cluster)
         CLUSTERS_CASES[get_address(cluster)] = (get_new_cases(cluster), get_total_cases(cluster))
+        CLUSTER_LIST.append(Cluster(get_address(cluster), get_new_cases(cluster)))
 
 print("FINISHED PRINTING")
 print("=====================================================")
@@ -278,6 +284,8 @@ print("=====================================================")
 
 print("CASES TODAY:")
 pp(CLUSTERS_CASES)
+pp(CLUSTER_LIST)
+pp(CLUSTER_LIST[0].get_address())
 
 
 # TODO: fix parsing of random spaces within cluster text
