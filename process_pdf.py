@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pprint import pprint as pp
 
 ROMAN_REGEX = "^[mdclxvi]+. $"
-DATE_STRING = (datetime.today() - timedelta(days=1)).strftime('%d %b %Y')
+DATE_STRING = (datetime.today() - timedelta(days=2)).strftime('%d %b %Y')
 PDF_PATH = 'downloaded_pdfs/%s.pdf' % DATE_STRING
 CLUSTERS_CASES = {}  # address:(new, total)
 
@@ -42,8 +42,17 @@ def clean_cluster(cluster):
 
 
 def clean_new_cluster(cluster):
-    numbers_converted = list(map(lambda x: try_convert(x), cluster.split()))
+    split = cluster.split()
+    numbers_converted = list(map(lambda x: try_convert(x), split))
     return "".join(numbers_converted)
+
+
+def format_at(cluster):
+    split = cluster.split()
+    for i in range(len(split) - 1):
+        if split[i] == 'a' and split[i + 1] == 't':
+            split[i] += split.pop(i + 1)
+    return " ".join(split)
 
 
 def try_convert(num):
@@ -70,7 +79,8 @@ def convert_first_number(string):
 
 
 def clean_cluster_address(cluster):
-    split_one = cluster.split(',', maxsplit=1)  # no maxsplit catches some of the dorms with > 1k confirmed cases
+    split = format_at(cluster)
+    split_one = split.split(',', maxsplit=1)  # no maxsplit catches some of the dorms with > 1k confirmed cases
     split_two = split_one[0].split('at', maxsplit=1)  # no maxsplit catches some parts of the addresses
     address = split_two[1]
     cleaned_address = format_address(concatenate_address(address.split()))
@@ -145,7 +155,12 @@ def get_new_cases(cluster):
 def get_total_cases(cluster):
     split_cluster = cluster.split()
     if "new cluster" in cluster:
-        return int(split_cluster[0]) + int(split_cluster[9])
+        total_cases = 0
+        new_cluster_split = cluster.split("at", maxsplit=1)
+        for i in new_cluster_split[0].split():
+            if i.isdigit():
+                total_cases += int(i)
+        return total_cases
     for i in range(len(split_cluster)):
         if split_cluster[i] == "total":
             return int(split_cluster.pop(i + 2).replace(',', ''))
