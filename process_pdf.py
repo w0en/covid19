@@ -3,6 +3,7 @@ import re
 import words2num
 from datetime import datetime, timedelta
 from pprint import pprint as pp
+from cluster import Cluster
 
 ROMAN_REGEX = "^[mdclxvi]+. $"
 DELIMITER_REGEX = " at |,"
@@ -12,56 +13,7 @@ CLUSTERS_CASES = {}  # address:(new, total)
 CLUSTER_LIST = []
 
 
-class Cluster:
-    # TODO: Split cluster name and address
-    total_cases = 0
-
-    def __init__(self, address, new_cases):
-        self.address = address  # static
-        self.new_cases = new_cases  # list of (cases, date) tuples?
-
-    # output formats
-    """
-    def __repr__(self):
-        return_string = "Cluster at: {} \n Recent cases: {} on {} \n Total cases: {}".format(self.address,
-                                                                                             self.new_cases[-1][1],
-                                                                                             self.new_cases[-1][0],
-                                                                                             self.total_cases)
-        return return_string
-
-    def __str__(self):
-        return_string = "{}: {}. Latest update: {} on {}".format(self.address, self.total_cases,
-                                                                 self.new_cases[-1][0], self.new_cases[-1][1])
-        return return_string
-    """
-    # getters
-    def get_address(self):
-        return self.address
-
-    def get_new_cases(self, date):
-        for i in self.new_cases:
-            if i[1] == date:
-                return i[0]
-        return -1
-
-    def get_total_cases(self):
-        return sum(map(lambda x: x[0], self.new_cases))
-
-    # setters
-    def add_new_case(self, cases, date):
-        for i in self.new_cases:
-            if i[1] == date:
-                break
-            else:
-                self.new_cases.append((cases, date))
-
-    def set_total_cases(self, total_cases):
-        if self.total_cases != total_cases:
-            print("Total cases mismatch!")
-            self.total_cases = total_cases
-            print("Updated total cases to reflect numbers in Annex B")
-
-
+# parsing
 def parse_clusters_from_page(page):
     contents = get_contents(page)
     raw_clusters = parse_clusters_from_contents(contents)
@@ -86,12 +38,18 @@ def parse_clusters_from_contents(cleaned_text):
     return clusters
 
 
+# string cleaning
 def clean_cluster(cluster):
     gaps_fixed_numbers_converted = convert_cluster_numbers(keyword_check(cluster))
     if "new cluster" in gaps_fixed_numbers_converted:
         return gaps_fixed_numbers_converted
     else:
         return clean_cluster_address(gaps_fixed_numbers_converted)
+
+
+# number conversion
+def convert_cluster_numbers(cluster):
+    return " ".join(map(try_convert, cluster.split()))
 
 
 def try_convert(num):
@@ -102,99 +60,7 @@ def try_convert(num):
         return num
 
 
-def convert_cluster_numbers(cluster):
-    return " ".join(map(try_convert, cluster.split()))
-
-
-def clean_cluster_address(cluster):
-    split_one = cluster.split(',', maxsplit=1)  # no maxsplit catches the dorms with > 1k confirmed cases
-    split_two = split_one[0].split('at', maxsplit=1)  # no maxsplit catches some parts of the addresses
-    address = split_two[1]
-    cleaned_address = format_address(concatenate_address(address.split()))
-    if "(" in cleaned_address and ")" not in cleaned_address:
-        cleaned_address += ")"
-    join_two = split_two[0] + "at " + cleaned_address
-    join_one = join_two.strip() + "," + split_one[-1]
-    return join_one
-
-
-def concatenate_address(address_list):
-    concatenated_list = []
-    for i in address_list:
-        if i[0].isdigit():
-            if address_list.index(i) == 0:
-                concatenated_list.append(i)
-            else:
-                concatenated_list[-1] += i
-        elif i[0].islower():
-            if address_list.index(i) == 0:
-                concatenated_list.append(i)
-            else:
-                concatenated_list[-1] += i
-        else:
-            concatenated_list.append(i)
-    return " ".join(concatenated_list)
-
-
-def get_address(cluster):
-    if "new cluster" in cluster:
-        return cluster.split("at")[-1].strip().strip('.')
-    else:
-        return format_address(cluster.split(',')[0].split("at", maxsplit=1)[1].strip())
-
-
-def format_address(address):
-    return road_number_check(dormitory_check(address))
-
-
-def dormitory_check(address):
-    if "dormitory" in address:
-        banana = address.split("dormitory")
-        return " Dormitory".join(banana)
-    elif "constructionsite" in address:
-        banana = address.split("constructionsite")
-        return " Construction Site".join(banana)
-    elif "construction" in address:
-        banana = address.split("construction")
-        return " Construction".join(banana)
-    elif "site" in address:
-        banana = address.split("site")
-        return " Site".join(banana)
-    else:
-        return address
-
-
-def road_number_check(address):
-    for i in range(len(address) - 1):
-        if address[i].isalpha() and address[i + 1].isdigit():
-            split_address = [address[0:i + 1], address[i + 1:len(address)]]
-            return " ".join(split_address)
-    return address
-
-
-def get_new_cases(cluster):
-    try:
-        return int(cluster.split()[0])
-    except ValueError:
-        return -1
-
-
-def get_total_cases(cluster):
-    split_cluster = cluster.split()
-    if "new cluster" in cluster:
-        total_cases = 0
-        new_cluster_split = cluster.split("at", maxsplit=1)
-        for i in new_cluster_split[0].split():
-            if i.isdigit():
-                total_cases += int(i)
-        return total_cases
-    for i in range(len(split_cluster)):
-        if split_cluster[i] == "total":
-            return int(split_cluster.pop(i + 2).replace(',', ''))
-        if split_cluster[i] == "confirmed":
-            return int(split_cluster.pop(i - 1).replace(',', ''))
-
-
+# misc checks
 def keyword_check(cluster):
     split = cluster.split()
     for i in range(len(split) - 1):
@@ -262,6 +128,109 @@ def keyword_check(cluster):
     return " ".join(split)
 
 
+# address cleaning
+def clean_cluster_address(cluster):
+    split_one = cluster.split(',', maxsplit=1)  # no maxsplit catches the dorms with > 1k confirmed cases
+    split_two = split_one[0].split('at', maxsplit=1)  # no maxsplit catches some parts of the addresses
+    address = split_two[1]
+    cleaned_address = format_address(concatenate_address(address.split()))
+    if "(" in cleaned_address and ")" not in cleaned_address:
+        cleaned_address += ")"
+    join_two = split_two[0] + "at " + cleaned_address
+    join_one = join_two.strip() + "," + split_one[-1]
+    return join_one
+
+
+def concatenate_address(address_list):
+    concatenated_list = []
+    for i in address_list:
+        if i[0].isdigit():
+            if address_list.index(i) == 0:
+                concatenated_list.append(i)
+            else:
+                concatenated_list[-1] += i
+        elif i[0].islower():
+            if address_list.index(i) == 0:
+                concatenated_list.append(i)
+            else:
+                concatenated_list[-1] += i
+        else:
+            concatenated_list.append(i)
+    return " ".join(concatenated_list)
+
+
+# address checks
+def format_address(address):
+    return road_number_check(dormitory_check(hyphen_check(address)))
+
+
+def dormitory_check(address):
+    if "dormitory" in address:
+        banana = address.split("dormitory")
+        return " Dormitory".join(banana)
+    elif "constructionsite" in address:
+        banana = address.split("constructionsite")
+        return " Construction Site".join(banana)
+    elif "construction" in address:
+        banana = address.split("construction")
+        return " Construction".join(banana)
+    elif "site" in address:
+        banana = address.split("site")
+        return " Site".join(banana)
+    elif "Site" in address:
+        banana = address.split("Site")
+        return " Site".join(banana)
+
+    else:
+        return address
+
+
+def road_number_check(address):
+    for i in range(len(address) - 1):
+        if address[i].isalpha() and address[i + 1].isdigit():
+            split_address = [address[0:i + 1], address[i + 1:len(address)]]
+            return " ".join(split_address)
+    return address
+
+
+def hyphen_check(address):
+    if '-' in address:
+        return '-'.join(map(lambda x: x.strip(), address.split('-')))
+    else:
+        return address
+
+
+# getters for constructor parameters
+def get_address(cluster):
+    if "new cluster" in cluster:
+        return cluster.split("at")[-1].strip().strip('.')
+    else:
+        return format_address(cluster.split(',')[0].split("at", maxsplit=1)[1].strip())
+
+
+def get_new_cases(cluster):
+    try:
+        return int(cluster.split()[0])
+    except ValueError:
+        return -1
+
+
+def get_total_cases(cluster):
+    split_cluster = cluster.split()
+    if "new cluster" in cluster:
+        total_cases = 0
+        new_cluster_split = cluster.split("at", maxsplit=1)
+        for i in new_cluster_split[0].split():
+            if i.isdigit():
+                total_cases += int(i)
+        return total_cases
+    for i in range(len(split_cluster)):
+        if split_cluster[i] == "total":
+            return int(split_cluster.pop(i + 2).replace(',', ''))
+        if split_cluster[i] == "confirmed":
+            return int(split_cluster.pop(i - 1).replace(',', ''))
+
+
 pdf = open(PDF_PATH, 'rb')
 pdf_reader = PyPDF2.PdfFileReader(pdf)
 print("=====================================================")
@@ -276,16 +245,14 @@ for i in range(pdf_reader.numPages):
     for cluster in clusters:
         print(cluster)
         CLUSTERS_CASES[get_address(cluster)] = (get_new_cases(cluster), get_total_cases(cluster))
-        CLUSTER_LIST.append(Cluster(get_address(cluster), get_new_cases(cluster)))
+        CLUSTER_LIST.append(Cluster(get_address(cluster), (get_new_cases(cluster), DATE_STRING)))
 
 print("FINISHED PRINTING")
 print("=====================================================")
 print("=====================================================")
 
 print("CASES TODAY:")
-pp(CLUSTERS_CASES)
 pp(CLUSTER_LIST)
-pp(CLUSTER_LIST[0].get_address())
 
 
 # TODO: fix parsing of random spaces within cluster text
